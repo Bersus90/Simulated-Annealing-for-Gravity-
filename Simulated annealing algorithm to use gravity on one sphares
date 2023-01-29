@@ -1,0 +1,161 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import math, time
+import matplotlib
+
+
+# identify our formulation of gravity 
+def gravity(xobs, xtarget, ztarget, r, trho):
+    G = 6.67e-11
+    bckgrho = 1750
+    
+    R= math.sqrt((xobs - xtarget)**2 + (ztarget)**2)
+    grav = G*(4*np.pi)*(r**3)*(trho-bckgrho)*ztarget/(R**(3/2))
+    return grav
+
+# creation of forward model 
+def forward_model(xobs, xtarget, ztarget, r, trho):
+    
+    d = 0
+    bckgrho = 1750
+
+    for j in range(len(trho)):
+        for i in range(len(x_obs)):
+            o_g[i, j] = gravity(x_obs[i],xtarget[j], ztarget[j], r[j], trho[j])
+    
+    grav_response = o_g[:, d] + o_g[:, d + 1]
+    return grav_response
+# identify the objective function to calculate misfit
+
+def objective_function(obs_data, xobs, xtarget, ztarget, r, trho):
+    misfit = np.sum(np.square(np.subtract(obs_data, forward_model(xobs, xtarget, ztarget, r, trho,))))
+    return misfit
+
+# obs point , the number of stations and all values of gravity for forward model
+
+stations = 100
+x_obs= np.linspace(-250,250,stations)
+o_g = np.zeros((stations,2))
+
+
+trho = [2500, 3250]
+xtarget = [-100, 30]
+ztarget = [20, 30]
+r = [5, 3]
+true_model = np.array([xtarget, ztarget, r,  trho])
+
+
+
+# Plotting our forward model according to given number
+
+grav_response = forward_model(x_obs, xtarget, ztarget, r, trho)
+
+
+plt.figure(figsize=(10, 7), dpi=80, facecolor='w', edgecolor='k')
+plt.plot(x_obs, grav_response, '*', label = 'Measurements')
+plt.xlabel("Stations")
+plt.ylabel("Magnitude")
+plt.legend(loc = 'best')
+plt.show()
+
+# simulated annealing algorithm 
+def SimAnn_solver(xobs, grav_response, initial_model, objective_function, temp, sample_number):
+    
+    # initial_model = [xtarget, ztarget, r, Rhotarget]
+
+    xtarget_r = initial_model[0, :]
+    ztarget_r = initial_model[1, :]
+    r_r = initial_model[2, :]
+    trho_r = initial_model[3, :]
+    
+    initial_eval = objective_function(grav_response, xobs, xtarget_r, ztarget_r, r_r, trho_r)
+    
+    # current model and its evaluation
+    current, current_eval = initial_model, initial_eval
+    
+    trho_rand = np.random.randint(1,3500,size=(sample_number,2))
+    xtarget_rand= np.random.randint(-100,100,size=(sample_number,2))
+    ztarget_rand= np.random.randint(1,50,size=(sample_number,2))
+    r_rand= np.random.randint(1,20,size=(sample_number,2))    
+    
+    #  the objective function value calculation and iteration
+    obj_func_value = []
+    
+    # looping part of the algorithm
+    for i in range(sample_number):
+        candidate_solution = np.array([xtarget_rand[i], ztarget_rand[i], r_rand[i], trho_rand[i]])
+        
+        # candidate evaulation
+        candidate_solution_eval = objective_function(grav_response, xobs, candidate_solution[0],
+                                                     candidate_solution[1], candidate_solution[2],
+                                                     candidate_solution[3])
+        
+        # move to the candidate point
+        if candidate_solution_eval < initial_eval:
+            # store new best point
+            initial_model, initial_eval = candidate_solution, candidate_solution_eval
+        
+        # he misfit values
+        obj_func_value.append(initial_eval)
+        
+        # candidate and current solution evaluation differences
+        diff = candidate_solution_eval - current_eval
+        
+        
+        # calculate temperature for current iteration
+        t = temp / float(i + 1)
+        
+    
+        # calculate metropolis acceptance criterion
+        metropolis_criterion = np.exp(-diff / t)
+
+        
+        # check if we should keep the new point
+        if diff < 0 and np.random.uniform(low=0, high=1) < metropolis_criterion:
+            # store the new current point
+            current, current_eval = candidate_solution, candidate_solution_eval
+            
+    return initial_model, initial_eval, obj_func_value
+    
+    
+# Calculation of simulation time 
+
+initial_model = np.random.randn(4, 2)
+temp = 1
+sample_number = 1000000
+
+start_time = time.time()
+
+final_model, final_misfit, misfit_values = SimAnn_solver(x_obs, grav_response, initial_model, objective_function, temp, sample_number)
+
+end_time = time.time()
+print('Simulation time: ', (end_time - start_time)/60, 'minutes')
+
+# plotting our measurement and inversion result
+
+obs_data = forward_model(x_obs, xtarget, ztarget, r, trho)
+predicted_data = forward_model(x_obs, final_model[0], final_model[1], final_model[2], final_model[3])
+
+plt.figure(figsize = (10, 6))
+plt.plot(x_obs,obs_data, 'r*', label = 'Measurement')
+plt.plot(x_obs,predicted_data, 'x', label = 'Inversion result')
+
+plt.title('Inversion result')
+plt.legend(loc = 'best')
+plt.show()
+
+#values of True model and calculated model and value of misfit
+
+print('Recovered model: ', final_model)
+print('True model: ', true_model)
+print('Final misfit: ', final_misfit)
+
+# plotting the changing of objective function
+
+plt.figure( figsize = (10, 6))
+plt.plot(misfit_values)
+plt.title('Objective function')
+plt.show()
+
+
+
